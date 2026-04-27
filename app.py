@@ -4,7 +4,7 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # Sayfa Ayarları
-st.set_page_config(page_title="BRN Depo Sayım v2.1", layout="wide")
+st.set_page_config(page_title="BRN Depo Sayım v2.2", layout="wide")
 
 # --- 1. VERİTABANI BAĞLANTISI ---
 try:
@@ -15,7 +15,7 @@ try:
     df_Stok_ana = df_Stok_ana.dropna(subset=["Kod", "İsim"])
     df_Stok_ana["Kod"] = df_Stok_ana["Kod"].astype(str).str.strip()
     
-    # Kod -> İsim Sözlüğü (Anlık eşleşme için)
+    # Kod -> İsim Sözlüğü
     kod_isim_dict = pd.Series(df_Stok_ana.İsim.values, index=df_Stok_ana.Kod).to_dict()
     kod_listesi = sorted(list(kod_isim_dict.keys()))
     ad_listesi = sorted(df_Stok_ana["İsim"].unique().tolist())
@@ -52,26 +52,20 @@ st.title("🚀 Sayım İşlemleri")
 
 tab1, tab2 = st.tabs(["📝 Sayım Girişi", "📊 Sayım Raporu"])
 
-# --- TAB 1: SAYIM GİRİŞ EKRANI (OTOMATİK DOLAN KUTUCUK) ---
+# --- TAB 1: SAYIM GİRİŞ EKRANI ---
 with tab1:
     st.subheader("📍 Yeni Veri Girişi")
     
     with st.container(border=True):
-        # Hizalama Sütunları
         col_adr, col_kod, col_isim, col_mik = st.columns([1, 1.5, 2.5, 1])
         
         with col_adr:
             s_adres = st.text_input("📍 Adres", key="adr_box").upper()
-        
         with col_kod:
-            # Seçim kutusu
             s_Kod = st.selectbox("📦 Ürün Kodu", [""] + kod_listesi, key="kod_box")
-            
         with col_isim:
-            # KRİTİK DÜZELTME: Ürün adı burada 'key' olmadan, doğrudan 's_Kod'a bağlı çalışır
             current_name = kod_isim_dict.get(str(s_Kod), "")
             st.text_input("📝 Ürün Adı", value=current_name, disabled=True)
-            
         with col_mik:
             s_miktar = st.number_input("⚖️ Miktar", min_value=0.0, step=1.0, key="mik_box")
         
@@ -89,16 +83,37 @@ with tab1:
             else:
                 st.warning("Eksik alanları doldurun!")
 
-    # Onay Bekleyen Liste
+    # --- DİNAMİK SİLİNEBİLİR LİSTE ---
     if st.session_state['gecici_sayim_listesi']:
         st.write("---")
         st.markdown("### 📥 Onay Bekleyen Sayımlar")
-        df_gecici = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
-        st.dataframe(df_gecici, use_container_width=True)
         
+        # Başlıklar
+        h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([1, 1.5, 2.5, 1, 0.5])
+        h_col1.caption("📍 Adres")
+        h_col2.caption("📦 Kod")
+        h_col3.caption("📝 Ürün Adı")
+        h_col4.caption("⚖️ Miktar")
+        h_col5.caption("❌")
+
+        # Satırları döngüyle oluşturuyoruz
+        for index, item in enumerate(st.session_state['gecici_sayim_listesi']):
+            r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([1, 1.5, 2.5, 1, 0.5])
+            r_col1.write(item["Adres"])
+            r_col2.write(item["Kod"])
+            r_col3.write(item["Ürün Adı"])
+            r_col4.write(f"{item['Miktar']:,.0f}")
+            
+            # Çöp Kutusu Butonu
+            if r_col5.button("🗑️", key=f"del_{index}"):
+                st.session_state['gecici_sayim_listesi'].pop(index)
+                st.rerun() # Listeyi güncellemek için sayfayı yenile
+
+        st.write("---")
         c_onay, c_iptal = st.columns(2)
         if c_onay.button("📤 DRIVE'A GÖNDER VE KAYDET", type="primary", use_container_width=True):
             try:
+                df_gecici = pd.DataFrame(st.session_state['gecici_sayim_listesi'])
                 df_db = conn.read(worksheet="sayim", ttl=0)
                 df_son = pd.concat([df_db, df_gecici], ignore_index=True)
                 conn.update(worksheet="sayim", data=df_son)
@@ -108,11 +123,11 @@ with tab1:
             except Exception as e:
                 st.error(f"Hata: {e}")
         
-        if c_iptal.button("🗑️ Listeyi Temizle", use_container_width=True):
+        if c_iptal.button("⚠️ Tüm Listeyi Boşalt", use_container_width=True):
             st.session_state['gecici_sayim_listesi'] = []
             st.rerun()
 
-# --- TAB 2: TEMİZ TARİH VE TÜM FİLTRELER ---
+# --- TAB 2: RAPOR EKRANI (DEĞİŞMEDİ) ---
 with tab2:
     st.subheader("🔍 Sayım Listeleri")
     try:
