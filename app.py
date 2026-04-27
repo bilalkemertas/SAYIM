@@ -11,7 +11,7 @@ try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     # Ana verileri başlangıçta bir kez çekiyoruz
     df_hareketler = conn.read(worksheet="HAREKETLER", ttl=0)
-    df_stok_ana = conn.read(worksheet="stok", ttl=0)
+    df_stok_ana = conn.read(worksheet="Stok", ttl=0)
 except Exception as e:
     st.error(f"Veritabanı bağlantı hatası! Lütfen Secrets ve Excel ayarlarını kontrol et. Hata: {e}")
     st.stop()
