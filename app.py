@@ -50,7 +50,7 @@ if st.sidebar.button("Güvenli Çıkış"):
 
 st.title("🚀 Sayım İşlemleri")
 
-tab1, tab2 = st.tabs(["📝 Sayım Girişi", "📊 Fark Raporu"])
+tab1, tab2 = st.tabs(["📝 Sayım Girişi", "📊 Sayım Raporu"])
 
 # --- TAB 1: SAYIM GİRİŞ EKRANI (OTOMATİK DOLAN KUTUCUK) ---
 with tab1:
