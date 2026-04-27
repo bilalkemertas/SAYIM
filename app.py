@@ -12,7 +12,7 @@ try:
     df_Stok_ana = conn.read(worksheet="Stok", ttl=0)
     # Filtreler için listeleri hazırla
     kod_listesi = sorted(df_Stok_ana["Kod"].unique().tolist())
-    ad_listesi = sorted(df_Stok_ana["Ad"].unique().tolist()) if "Ad" in df_Stok_ana.columns else []
+    ad_listesi = sorted(df_Stok_ana["İsim"].unique().tolist()) if "İsim" in df_Stok_ana.columns else []
 except Exception as e:
     st.error(f"Veritabanı bağlantı hatası! Lütfen 'Stok' sekmesini kontrol et. Hata: {e}")
     st.stop()
@@ -106,7 +106,7 @@ with tab2:
         df_sayim_db = conn.read(worksheet="sayim", ttl=0)
         
         # Karşılaştırma Mantığı
-        sistem = df_Stok_ana[['Adres', 'Kod', 'Ad', 'Miktar']].copy()
+        sistem = df_Stok_ana[['Adres', 'Kod', 'İsim', 'Miktar']].copy()
         sistem.columns = ["Adres", "Kod", "Ürün Adı", "Sistem_Miktarı"]
         
         if not df_sayim_db.empty:
