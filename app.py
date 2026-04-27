@@ -4,23 +4,27 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # Sayfa Ayarları
-st.set_page_config(page_title="BRN Depo Sayım v2.2", layout="wide")
+st.set_page_config(page_title="BRN Depo Sayım v2.3", layout="wide")
 
 # --- 1. VERİTABANI BAĞLANTISI ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df_Stok_ana = conn.read(worksheet="Stok", ttl=0)
     
-    # Veri Temizliği: Boşlukları temizle ve metne çevir
+    # Veri Temizliği
     df_Stok_ana = df_Stok_ana.dropna(subset=["Kod", "İsim"])
     df_Stok_ana["Kod"] = df_Stok_ana["Kod"].astype(str).str.strip()
     
-    # Kod -> İsim Sözlüğü
+    # Sözlükler
     kod_isim_dict = pd.Series(df_Stok_ana.İsim.values, index=df_Stok_ana.Kod).to_dict()
     kod_listesi = sorted(list(kod_isim_dict.keys()))
     ad_listesi = sorted(df_Stok_ana["İsim"].unique().tolist())
+    
+    # Standart Durum Listesi
+    durum_opsiyonlari = ["Kullanılabilir", "Hasarlı", "Kayıp", "İncelemede"]
+    
 except Exception as e:
-    st.error(f"Bağlantı hatası! Stok sekmesini kontrol edin. Hata: {e}")
+    st.error(f"Bağlantı hatası! Hata: {e}")
     st.stop()
 
 # --- 2. GİRİŞ VE BELLEK SİSTEMİ ---
@@ -48,7 +52,7 @@ if st.sidebar.button("Güvenli Çıkış"):
     st.session_state.clear()
     st.rerun()
 
-st.title("🚀 Sayım İşlemleri")
+st.title("🚀 Gelişmiş Sayım ve Durum Takibi")
 
 tab1, tab2 = st.tabs(["📝 Sayım Girişi", "📊 Sayım Raporu"])
 
@@ -57,7 +61,8 @@ with tab1:
     st.subheader("📍 Yeni Veri Girişi")
     
     with st.container(border=True):
-        col_adr, col_kod, col_isim, col_mik = st.columns([1, 1.5, 2.5, 1])
+        # Durum sütunu için genişliği ayarladık
+        col_adr, col_kod, col_isim, col_mik, col_durum = st.columns([1, 1.2, 1.8, 0.8, 1.2])
         
         with col_adr:
             s_adres = st.text_input("📍 Adres", key="adr_box").upper()
@@ -68,6 +73,8 @@ with tab1:
             st.text_input("📝 Ürün Adı", value=current_name, disabled=True)
         with col_mik:
             s_miktar = st.number_input("⚖️ Miktar", min_value=0.0, step=1.0, key="mik_box")
+        with col_durum:
+            s_durum = st.selectbox("🛠️ Ürün Durumu", durum_opsiyonlari, key="durum_box")
         
         if st.button("➕ Listeye Ekle", use_container_width=True):
             if s_adres and s_Kod:
@@ -77,11 +84,12 @@ with tab1:
                     "Adres": s_adres,
                     "Kod": s_Kod,
                     "Ürün Adı": current_name,
-                    "Miktar": s_miktar
+                    "Miktar": s_miktar,
+                    "Durum": s_durum
                 })
-                st.toast(f"{s_Kod} sepete eklendi.")
+                st.toast(f"{s_Kod} ({s_durum}) eklendi.")
             else:
-                st.warning("Eksik alanları doldurun!")
+                st.warning("Adres ve Kod alanları zorunludur!")
 
     # --- DİNAMİK SİLİNEBİLİR LİSTE ---
     if st.session_state['gecici_sayim_listesi']:
@@ -89,25 +97,27 @@ with tab1:
         st.markdown("### 📥 Onay Bekleyen Sayımlar")
         
         # Başlıklar
-        h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([1, 1.5, 2.5, 1, 0.5])
+        h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([1, 1, 1.5, 0.8, 1.2, 0.5])
         h_col1.caption("📍 Adres")
         h_col2.caption("📦 Kod")
         h_col3.caption("📝 Ürün Adı")
         h_col4.caption("⚖️ Miktar")
-        h_col5.caption("❌")
+        h_col5.caption("🛠️ Durum")
+        h_col6.caption("❌")
 
-        # Satırları döngüyle oluşturuyoruz
         for index, item in enumerate(st.session_state['gecici_sayim_listesi']):
-            r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([1, 1.5, 2.5, 1, 0.5])
+            r_col1, r_col2, r_col3, r_col4, r_col5, r_col6 = st.columns([1, 1, 1.5, 0.8, 1.2, 0.5])
             r_col1.write(item["Adres"])
             r_col2.write(item["Kod"])
             r_col3.write(item["Ürün Adı"])
             r_col4.write(f"{item['Miktar']:,.0f}")
+            # Duruma göre renkli vurgu yapabiliriz
+            status_color = "🔴" if item["Durum"] == "Hasarlı" else "🟢"
+            r_col5.write(f"{status_color} {item['Durum']}")
             
-            # Çöp Kutusu Butonu
-            if r_col5.button("🗑️", key=f"del_{index}"):
+            if r_col6.button("🗑️", key=f"del_{index}"):
                 st.session_state['gecici_sayim_listesi'].pop(index)
-                st.rerun() # Listeyi güncellemek için sayfayı yenile
+                st.rerun()
 
         st.write("---")
         c_onay, c_iptal = st.columns(2)
@@ -118,7 +128,7 @@ with tab1:
                 df_son = pd.concat([df_db, df_gecici], ignore_index=True)
                 conn.update(worksheet="sayim", data=df_son)
                 st.session_state['gecici_sayim_listesi'] = []
-                st.success("Veriler Drive'a aktarıldı!")
+                st.success("Tüm veriler durum bilgisiyle beraber kaydedildi!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Hata: {e}")
@@ -127,9 +137,9 @@ with tab1:
             st.session_state['gecici_sayim_listesi'] = []
             st.rerun()
 
-# --- TAB 2: RAPOR EKRANI (DEĞİŞMEDİ) ---
+# --- TAB 2: DURUM BAZLI RAPOR EKRANI ---
 with tab2:
-    st.subheader("🔍 Sayım Listeleri")
+    st.subheader("🔍 Sayım ve Durum Analizi")
     try:
         df_sayim_db = conn.read(worksheet="sayim", ttl=0)
         
@@ -140,7 +150,7 @@ with tab2:
         sistem.columns = ["Adres", "Kod", "Ürün Adı", "Sistem_Miktarı"]
         
         with st.expander("🛠️ Filtreler", expanded=True):
-            f1, f2, f3, f4 = st.columns(4)
+            f1, f2, f3, f4, f5 = st.columns(5)
             with f1:
                 t_list = ["Hepsi"] + sorted(df_sayim_db["Tarih"].unique().tolist(), reverse=True) if not df_sayim_db.empty else ["Hepsi"]
                 f_tarih = st.selectbox("📅 Tarih", t_list)
@@ -150,19 +160,28 @@ with tab2:
                 f_ad = st.multiselect("📝 Ürün Adı", ad_listesi)
             with f4:
                 f_adr = st.multiselect("📍 Adres", sorted(sistem["Adres"].unique().tolist()))
+            with f5:
+                # Durum filtresi eklendi
+                f_durum = st.multiselect("🛠️ Durum", durum_opsiyonlari)
 
         act_sayim = df_sayim_db.copy()
         if f_tarih != "Hepsi":
             act_sayim = act_sayim[act_sayim["Tarih"] == f_tarih]
+        if f_durum:
+            act_sayim = act_sayim[act_sayim["Durum"].isin(f_durum)]
 
         if not act_sayim.empty:
             act_sayim['Miktar'] = pd.to_numeric(act_sayim['Miktar'], errors='coerce').fillna(0)
-            s_ozet = act_sayim.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
-            s_ozet.columns = ["Adres", "Kod", "Sayılan_Miktar"]
+            # Raporu Duruma göre grupluyoruz ki sağlam ve hasarlı miktarlar ayrı görünsün
+            s_ozet = act_sayim.groupby(['Adres', 'Kod', 'Durum'])['Miktar'].sum().reset_index()
+            s_ozet.columns = ["Adres", "Kod", "Durum", "Sayılan_Miktar"]
         else:
-            s_ozet = pd.DataFrame(columns=["Adres", "Kod", "Sayılan_Miktar"])
+            s_ozet = pd.DataFrame(columns=["Adres", "Kod", "Durum", "Sayılan_Miktar"])
 
-        final_df = pd.merge(sistem, s_ozet, on=['Adres', 'Kod'], how='outer').fillna(0)
+        # Karşılaştırma (Sistem stoğu genellikle durumu bilmez, o yüzden outer join yapıyoruz)
+        final_df = pd.merge(sistem, s_ozet, on=['Adres', 'Kod'], how='outer').fillna({"Sayılan_Miktar": 0, "Sistem_Miktarı": 0, "Durum": "Sayılmadı"})
+        
+        # Fark hesaplama (Sadece Kullanılabilir olanları sistemle kıyaslamak mantıklı olabilir ama biz genel farkı gösteriyoruz)
         final_df['FARK'] = final_df['Sayılan_Miktar'] - final_df['Sistem_Miktarı']
 
         if f_kod: final_df = final_df[final_df["Kod"].isin(f_kod)]
@@ -177,9 +196,9 @@ with tab2:
         st.dataframe(final_df.style.map(style_f, subset=['FARK']), use_container_width=True)
 
         m1, m2, m3 = st.columns(3)
-        m1.metric("Sistem", f"{final_df['Sistem_Miktarı'].sum():,.0f}")
-        m2.metric("Sayılan", f"{final_df['Sayılan_Miktar'].sum():,.0f}")
-        m3.metric("Fark", f"{final_df['FARK'].sum():,.0f}", delta=int(final_df['FARK'].sum()))
+        m1.metric("Toplam Sistem", f"{final_df['Sistem_Miktarı'].sum():,.0f}")
+        m2.metric("Toplam Sayılan", f"{final_df['Sayılan_Miktar'].sum():,.0f}")
+        m3.metric("Toplam Fark", f"{final_df['FARK'].sum():,.0f}", delta=int(final_df['FARK'].sum()))
 
     except Exception as e:
         st.error(f"Rapor hatası: {e}")
