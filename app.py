@@ -52,7 +52,7 @@ with tab1:
         c1, c2 = st.columns(2)
         with c1:
             s_adres = st.text_input("📍 Sayım Yapılan Adres").upper()
-            s_kod = st.text_input("📦 Malzeme Kodu").upper()
+            s_kod = st.text_input("📦 Kod").upper()
         with c2:
             s_miktar = st.number_input("⚖️ Raf Miktarı (Fiili)", min_value=0.0, step=1.0)
             s_birim = st.selectbox("📏 Birim", ["ADET", "KG", "MT", "PAKET"])
@@ -70,7 +70,7 @@ with tab1:
                         "Tarih": [datetime.now().strftime("%d.%m.%Y %H:%M")],
                         "Personel": [st.session_state['user_name']],
                         "Adres": [s_adres],
-                        "Malzeme Kodu": [s_kod],
+                        "Kod": [s_kod],
                         "Miktar": [s_miktar],
                         "Birim": [s_birim]
                     })
@@ -93,21 +93,21 @@ with tab2:
             if df_stok_ana.empty:
                 st.warning("Sistem stoğu ('stok' sekmesi) boş görünüyor.")
             else:
-                sistem = df_stok_ana[['Adres', 'Malzeme Kodu', 'Miktar']].copy()
+                sistem = df_stok_ana[['Adres', 'Kod', 'Miktar']].copy()
                 sistem['Miktar'] = pd.to_numeric(sistem['Miktar'], errors='coerce').fillna(0)
-                sistem.columns = ["Adres", "Malzeme Kodu", "Sistem_Miktarı"]
+                sistem.columns = ["Adres", "Kod", "Sistem_Miktarı"]
 
                 # 2. Sayım Verilerini (sayim sekmesi) Hazırla ve Grupla
                 df_sayim_raw = conn.read(worksheet="sayim", ttl=0)
                 if not df_sayim_raw.empty:
                     df_sayim_raw['Miktar'] = pd.to_numeric(df_sayim_raw['Miktar'], errors='coerce').fillna(0)
-                    sayim_ozet = df_sayim_raw.groupby(['Adres', 'Malzeme Kodu'])['Miktar'].sum().reset_index()
-                    sayim_ozet.columns = ["Adres", "Malzeme Kodu", "Sayılan_Miktar"]
+                    sayim_ozet = df_sayim_raw.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+                    sayim_ozet.columns = ["Adres", "Kod", "Sayılan_Miktar"]
                 else:
-                    sayim_ozet = pd.DataFrame(columns=["Adres", "Malzeme Kodu", "Sayılan_Miktar"])
+                    sayim_ozet = pd.DataFrame(columns=["Adres", "Kod", "Sayılan_Miktar"])
 
                 # 3. İki Dünyayı Birleştir (Hizala)
-                rapor_df = pd.merge(sistem, sayim_ozet, on=['Adres', 'Malzeme Kodu'], how='outer').fillna(0)
+                rapor_df = pd.merge(sistem, sayim_ozet, on=['Adres', 'Kod'], how='outer').fillna(0)
                 
                 # 4. Fark Hesapla
                 rapor_df['FARK'] = rapor_df['Sayılan_Miktar'] - rapor_df['Sistem_Miktarı']
