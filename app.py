@@ -48,7 +48,7 @@ if st.sidebar.button("Güvenli Çıkış"):
     st.session_state.clear()
     st.rerun()
 
-st.title("🚀 Akıllı Sayım ve Otomasyon")
+st.title("🚀 Sayım İşlemleri")
 
 tab1, tab2 = st.tabs(["📝 Sayım Girişi", "📊 Fark Raporu"])
 
@@ -114,7 +114,7 @@ with tab1:
 
 # --- TAB 2: TEMİZ TARİH VE TÜM FİLTRELER ---
 with tab2:
-    st.subheader("🔍 Filtreli Stok Analizi")
+    st.subheader("🔍 Sayım Listeleri")
     try:
         df_sayim_db = conn.read(worksheet="sayim", ttl=0)
         
