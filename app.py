@@ -77,26 +77,40 @@ with tab1:
 
 with tab2:
     if st.button("Raporu Hesapla"):
-        # Sistem Stoğu (HAREKETLER sekmesinden)
-        df_h = df_hareketler.copy()
-        df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
-        df_h['Net'] = df_h.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
-        
-        sis_stok = df_h.groupby(['Adres', 'Malzeme Kodu'])['Net'].sum().reset_index()
-        sis_stok.columns = ["Adres", "Malzeme Kodu", "Sistem_Miktarı"]
-        
-        # Sayım Stoğu (sayim sekmesinden)
-        df_s = conn.read(worksheet="sayim", ttl=0)
-        if not df_s.empty:
-            df_s['Miktar'] = pd.to_numeric(df_s['Miktar'], errors='coerce').fillna(0)
-            say_stok = df_s.groupby(['Adres', 'Malzeme Kodu'])['Miktar'].sum().reset_index()
-            say_stok.columns = ["Adres", "Malzeme Kodu", "Sayılan_Miktar"]
-            
-            # Karşılaştırma
-            fark_df = pd.merge(sis_stok, say_stok, on=['Adres', 'Malzeme Kodu'], how='outer').fillna(0)
-            fark_df['FARK'] = fark_df['Sayılan_Miktar'] - fark_df['Sistem_Miktarı']
-            
-            st.write("### 🔍 Stok Fark Analizi")
-            st.dataframe(fark_df, use_container_width=True)
+        # 1. HAREKETLER sekmesi boş mu kontrol et
+        if df_hareketler.empty or len(df_hareketler) == 0:
+            st.warning("⚠️ HAREKETLER sekmesinde henüz hiç stok hareketi bulunmuyor. Lütfen önce stok girişi yapın.")
         else:
-            st.info("Henüz sayım verisi bulunmuyor.")
+            try:
+                # Sistem Stoğu Hesaplama
+                df_h = df_hareketler.copy()
+                df_h['Miktar'] = pd.to_numeric(df_h['Miktar'], errors='coerce').fillna(0)
+                
+                # İşlem sütunu var mı kontrolü
+                if 'İşlem' in df_h.columns:
+                    df_h['Net'] = df_h.apply(lambda r: r['Miktar'] if str(r['İşlem']).upper() == 'GİRİŞ' else -r['Miktar'], axis=1)
+                    
+                    sis_stok = df_h.groupby(['Adres', 'Malzeme Kodu'])['Net'].sum().reset_index()
+                    sis_stok.columns = ["Adres", "Malzeme Kodu", "Sistem_Miktarı"]
+                    
+                    # Sayım Stoğu (sayim sekmesinden)
+                    df_s = conn.read(worksheet="sayim", ttl=0)
+                    
+                    if not df_s.empty and len(df_s) > 0:
+                        df_s['Miktar'] = pd.to_numeric(df_s['Miktar'], errors='coerce').fillna(0)
+                        say_stok = df_s.groupby(['Adres', 'Malzeme Kodu'])['Miktar'].sum().reset_index()
+                        say_stok.columns = ["Adres", "Malzeme Kodu", "Sayılan_Miktar"]
+                        
+                        # Karşılaştırma
+                        fark_df = pd.merge(sis_stok, say_stok, on=['Adres', 'Malzeme Kodu'], how='outer').fillna(0)
+                        fark_df['FARK'] = fark_df['Sayılan_Miktar'] - fark_df['Sistem_Miktarı']
+                        
+                        st.write("### 🔍 Stok Fark Analizi")
+                        st.dataframe(fark_df, use_container_width=True)
+                    else:
+                        st.info("ℹ️ Henüz fiziksel bir sayım verisi girilmemiş. Sadece sistem stokları listeleniyor.")
+                        st.dataframe(sis_stok, use_container_width=True)
+                else:
+                    st.error("❌ HAREKETLER sayfasında 'İşlem' başlığı bulunamadı!")
+            except Exception as e:
+                st.error(f"Hesaplama hatası: {e}")
