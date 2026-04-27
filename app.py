@@ -9,9 +9,9 @@ st.set_page_config(page_title="BRN Depo Sayım v1.1", layout="wide")
 # --- 1. VERİTABANI BAĞLANTISI ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df_stok_ana = conn.read(worksheet="stok", ttl=0)
+    df_Stok_ana = conn.read(worksheet="Stok", ttl=0)
 except Exception as e:
-    st.error(f"Veritabanı bağlantı hatası! Lütfen 'stok' sekmesini kontrol et. Hata: {e}")
+    st.error(f"Veritabanı bağlantı hatası! Lütfen 'Stok' sekmesini kontrol et. Hata: {e}")
     st.stop()
 
 # --- 2. GİRİŞ (LOGIN) SİSTEMİ ---
@@ -76,9 +76,9 @@ with tab1:
 with tab2:
     if st.button("🔄 Raporu Yenile ve Hesapla"):
         try:
-            # 1. Sistem Stoğu (stok sekmesi)
+            # 1. Sistem Stoğu (Stok sekmesi)
             # Senin tablolarında "kod" sütunu olduğu için sütun adlarını buna göre seçiyoruz
-            sistem = df_stok_ana[['Adres', 'kod', 'Miktar']].copy()
+            sistem = df_Stok_ana[['Adres', 'kod', 'Miktar']].copy()
             sistem['Miktar'] = pd.to_numeric(sistem['Miktar'], errors='coerce').fillna(0)
             sistem.columns = ["Adres", "kod", "Sistem_Miktarı"]
 
