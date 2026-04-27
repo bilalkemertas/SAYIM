@@ -4,17 +4,17 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 
 # Sayfa Ayarları
-st.set_page_config(page_title="BRN Depo Sayım v1.8", layout="wide")
+st.set_page_config(page_title="BRN Depo Sayım v1.9", layout="wide")
 
 # --- 1. VERİTABANI BAĞLANTISI ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df_Stok_ana = conn.read(worksheet="Stok", ttl=0)
     
-    # Boş verileri temizle ve eşleşme sözlüğü kur
+    # Boş verileri temizle
     df_Stok_ana = df_Stok_ana.dropna(subset=["Kod", "İsim"])
     
-    # Kod -> İsim sözlüğü (Sayım girişinde anlık isim göstermek için)
+    # Kod -> İsim sözlüğü (Anlık isim göstermek için)
     kod_isim_dict = pd.Series(df_Stok_ana.İsim.values, index=df_Stok_ana.Kod.astype(str)).to_dict()
     kod_listesi = sorted(list(kod_isim_dict.keys()))
     ad_listesi = sorted(df_Stok_ana["İsim"].unique().tolist())
@@ -29,7 +29,7 @@ if 'gecici_sayim_listesi' not in st.session_state:
     st.session_state['gecici_sayim_listesi'] = []
 
 if not st.session_state['logged_in']:
-    st.title("🔐 BRN Depo Giriş")
+    st.title("🔐 BRN Depo Sistemi")
     user_id = st.text_input("Kullanıcı Adı")
     password = st.text_input("Şifre", type="password")
     if st.button("Giriş Yap"):
@@ -47,29 +47,32 @@ if st.sidebar.button("Güvenli Çıkış"):
     st.session_state.clear()
     st.rerun()
 
-st.title("🚀 Kesin Çözüm: Sayım ve Filtreli Rapor")
+st.title("🚀 Akıllı Depo Sayım Modülü")
 
 tab1, tab2 = st.tabs(["📝 Sayım Girişi", "📊 Fark Raporu"])
 
-# --- TAB 1: SAYIM GİRİŞ EKRANI (ANLIK İSİM GÜNCELLEME) ---
+# --- TAB 1: SAYIM GİRİŞ EKRANI (ANLIK ÜRÜN ADI) ---
 with tab1:
     st.subheader("📍 Sayım Verisi Ekle")
     
-    # Form dışında container kullanarak anlık isim gelmesini sağlıyoruz
+    # Form yerine container kullanarak anlık veri tetiklemeyi açtık
     with st.container(border=True):
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1:
-            s_adres = st.text_input("📍 Adres", key="adr_input").upper()
+            s_adres = st.text_input("📍 Adres", key="adr_in").upper()
         with c2:
-            s_Kod = st.selectbox("📦 Ürün Kodu", [""] + kod_listesi, key="kod_select")
+            # Ürün kodu seçimi
+            s_Kod = st.selectbox("📦 Ürün Kodu", [""] + kod_listesi, key="kod_in")
             
-            # --- ÜRÜN ADINI GETİRME (BURASI ARTIK ANLIK) ---
+            # --- ÜRÜN ADINI ANLIK GETİRME ---
             s_isim = kod_isim_dict.get(str(s_Kod), "")
             if s_Kod != "":
-                st.markdown(f"**Ürün Adı:** :blue[{s_isim}]")
+                # Kod seçildiği anda bu mavi kutu ekranda belirir
+                st.info(f"🔍 **Ürün Adı:** {s_isim}")
         with c3:
-            s_miktar = st.number_input("⚖️ Miktar", min_value=0.0, step=1.0, key="mik_input")
+            s_miktar = st.number_input("⚖️ Miktar", min_value=0.0, step=1.0, key="mik_in")
         
+        # Butona basınca listeye ekler
         if st.button("➕ Listeye Ekle", use_container_width=True):
             if s_adres and s_Kod:
                 yeni_kayit = {
@@ -81,11 +84,11 @@ with tab1:
                     "Miktar": s_miktar
                 }
                 st.session_state['gecici_sayim_listesi'].append(yeni_kayit)
-                st.toast(f"{s_Kod} sepete eklendi.")
+                st.toast(f"{s_Kod} listeye eklendi.")
             else:
-                st.warning("Lütfen Adres ve Kod alanlarını doldurunuz!")
+                st.warning("Lütfen Adres ve Kod seçiniz!")
 
-    # Geçici Liste (Sepet)
+    # Onay Bekleyen Liste (Sepet)
     if st.session_state['gecici_sayim_listesi']:
         st.write("---")
         st.markdown("### 📥 Onay Bekleyen Liste")
@@ -114,7 +117,7 @@ with tab2:
     try:
         df_sayim_db = conn.read(worksheet="sayim", ttl=0)
         
-        # --- TARİH TEMİZLEME (SAAT/DAKİKA KESİMİ) ---
+        # --- TARİH TEMİZLEME (Filtrede sadece GG.AA.YYYY görünür) ---
         if not df_sayim_db.empty:
             df_sayim_db["Tarih"] = df_sayim_db["Tarih"].astype(str).str[:10]
         
@@ -122,7 +125,7 @@ with tab2:
         sistem = df_Stok_ana[['Adres', 'Kod', 'İsim', 'Miktar']].copy()
         sistem.columns = ["Adres", "Kod", "Ürün Adı", "Sistem_Miktarı"]
         
-        # --- FİLTRE PANELİ (Ürün Adı Geri Geldi!) ---
+        # Filtre Paneli
         with st.expander("🛠️ Rapor Filtreleri", expanded=True):
             f1, f2, f3, f4 = st.columns(4)
             with f1:
@@ -131,7 +134,6 @@ with tab2:
             with f2:
                 f_kod = st.multiselect("📦 Kod", kod_listesi)
             with f3:
-                # Ürün Adı Filtresi Burası!
                 f_ad = st.multiselect("📝 Ürün Adı", ad_listesi)
             with f4:
                 f_adr = st.multiselect("📍 Adres", sorted(sistem["Adres"].unique().tolist()))
@@ -148,22 +150,22 @@ with tab2:
         else:
             s_ozet = pd.DataFrame(columns=["Adres", "Kod", "Sayılan_Miktar"])
 
-        # Birleştirme
+        # Birleştirme ve Fark
         final_df = pd.merge(sistem, s_ozet, on=['Adres', 'Kod'], how='outer').fillna(0)
         final_df['FARK'] = final_df['Sayılan_Miktar'] - final_df['Sistem_Miktarı']
 
-        # Multi Filtre Uygulama
+        # Filtreleri Uygula
         if f_kod: final_df = final_df[final_df["Kod"].isin(f_kod)]
         if f_ad: final_df = final_df[final_df["Ürün Adı"].isin(f_ad)]
         if f_adr: final_df = final_df[final_df["Adres"].isin(f_adr)]
 
         # Tabloyu Göster
-        def style_logic(v):
+        def style_f(v):
             if v < 0: return 'background-color: #ffcccc; color: red'
             if v > 0: return 'background-color: #ccffcc; color: green'
             return ''
 
-        st.dataframe(final_df.style.map(style_logic, subset=['FARK']), use_container_width=True)
+        st.dataframe(final_df.style.map(style_f, subset=['FARK']), use_container_width=True)
 
         # Metrikler
         m1, m2, m3 = st.columns(3)
