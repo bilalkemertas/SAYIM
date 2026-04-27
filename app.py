@@ -47,26 +47,26 @@ with tab1:
         c1, c2 = st.columns(2)
         with c1:
             s_adres = st.text_input("📍 Adres").upper()
-            s_kod = st.text_input("📦 Kod (Ürün Kodu)").upper() # "kod" sütununa gidecek veri
+            s_Kod = st.text_input("📦 Kod (Ürün Kodu)").upper() # "Kod" sütununa gidecek veri
         with c2:
             s_miktar = st.number_input("⚖️ Sayılan Miktar", min_value=0.0, step=1.0)
             s_birim = st.selectbox("📏 Birim", ["ADET", "KG", "MT", "PAKET"])
         
         if st.form_submit_button("💾 Sayımı Sisteme Kaydet"):
-            if s_adres and s_kod:
+            if s_adres and s_Kod:
                 try:
                     df_sayim_mevcut = conn.read(worksheet="sayim", ttl=0)
                     yeni_veri = pd.DataFrame({
                         "Tarih": [datetime.now().strftime("%d.%m.%Y %H:%M")],
                         "Personel": [st.session_state['user_name']],
                         "Adres": [s_adres],
-                        "kod": [s_kod], # Sütun adını "kod" yaptık
+                        "Kod": [s_Kod], # Sütun adını "Kod" yaptık
                         "Miktar": [s_miktar],
                         "Birim": [s_birim]
                     })
                     df_sayim_son = pd.concat([df_sayim_mevcut, yeni_veri], ignore_index=True)
                     conn.update(worksheet="sayim", data=df_sayim_son)
-                    st.success(f"✅ {s_kod} kaydedildi.")
+                    st.success(f"✅ {s_Kod} kaydedildi.")
                 except Exception as e:
                     st.error(f"Kayıt Hatası: {e}")
             else:
@@ -77,22 +77,22 @@ with tab2:
     if st.button("🔄 Raporu Yenile ve Hesapla"):
         try:
             # 1. Sistem Stoğu (Stok sekmesi)
-            # Senin tablolarında "kod" sütunu olduğu için sütun adlarını buna göre seçiyoruz
-            sistem = df_Stok_ana[['Adres', 'kod', 'Miktar']].copy()
+            # Senin tablolarında "Kod" sütunu olduğu için sütun adlarını buna göre seçiyoruz
+            sistem = df_Stok_ana[['Adres', 'Kod', 'Miktar']].copy()
             sistem['Miktar'] = pd.to_numeric(sistem['Miktar'], errors='coerce').fillna(0)
-            sistem.columns = ["Adres", "kod", "Sistem_Miktarı"]
+            sistem.columns = ["Adres", "Kod", "Sistem_Miktarı"]
 
             # 2. Sayım Verileri (sayim sekmesi)
             df_sayim_raw = conn.read(worksheet="sayim", ttl=0)
             if not df_sayim_raw.empty:
                 df_sayim_raw['Miktar'] = pd.to_numeric(df_sayim_raw['Miktar'], errors='coerce').fillna(0)
-                sayim_ozet = df_sayim_raw.groupby(['Adres', 'kod'])['Miktar'].sum().reset_index()
-                sayim_ozet.columns = ["Adres", "kod", "Sayılan_Miktar"]
+                sayim_ozet = df_sayim_raw.groupby(['Adres', 'Kod'])['Miktar'].sum().reset_index()
+                sayim_ozet.columns = ["Adres", "Kod", "Sayılan_Miktar"]
             else:
-                sayim_ozet = pd.DataFrame(columns=["Adres", "kod", "Sayılan_Miktar"])
+                sayim_ozet = pd.DataFrame(columns=["Adres", "Kod", "Sayılan_Miktar"])
 
             # 3. Hizalama (Outer Join)
-            rapor_df = pd.merge(sistem, sayim_ozet, on=['Adres', 'kod'], how='outer').fillna(0)
+            rapor_df = pd.merge(sistem, sayim_ozet, on=['Adres', 'Kod'], how='outer').fillna(0)
             rapor_df['FARK'] = rapor_df['Sayılan_Miktar'] - rapor_df['Sistem_Miktarı']
 
             # 4. Renklendirme ve Görselleştirme (Hata veren applymap yerine map kullanıldı)
@@ -115,4 +115,4 @@ with tab2:
             c3.metric("Net Fark", f"{rapor_df['FARK'].sum():,.0f}")
 
         except Exception as e:
-            st.error(f"Rapor hatası: {e}. Lütfen sekmelerdeki sütun başlıklarının 'Adres', 'kod' ve 'Miktar' olduğundan emin olun.")
+            st.error(f"Rapor hatası: {e}. Lütfen sekmelerdeki sütun başlıklarının 'Adres', 'Kod' ve 'Miktar' olduğundan emin olun.")
