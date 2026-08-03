@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
 import datetime
+from streamlit_gsheets import GSheetsConnection
 
 # --- SAYFA AYARLARI (Mobil Uyumlu) ---
 st.set_page_config(
@@ -11,48 +11,109 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- SUPABASE BAĞLANTISI ---
+WORKSHEET = "tasks"
+COLUMNS = ["id", "tarih", "gorev", "aciklama", "sorumlu", "durum",
+           "silindi", "tamamlanma_tarihi", "silinme_tarihi", "silen", "created_at"]
+
+# --- GOOGLE SHEETS BAĞLANTISI ---
 @st.cache_resource
-def init_supabase() -> Client:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+def init_connection():
+    return st.connection("gsheets", type=GSheetsConnection)
 
 try:
-    supabase = init_supabase()
+    conn = init_connection()
 except Exception as e:
-    st.error("Veritabanı bağlantı hatası! Lütfen Streamlit Secrets alanını kontrol edin.")
+    st.error(f"Google Sheets bağlantı hatası: {e}")
     st.stop()
 
-# --- VERİ ÇEKME FONKSİYONU ---
-def load_tasks():
-    response = supabase.table("tasks").select("*").order("created_at", desc=True).execute()
-    return pd.DataFrame(response.data)
 
-# --- BAŞLIK ---
-st.title("🛋️ Satın Alma Görev Takip")
-st.caption("Yatak Üretim Fabrikası · Canlı İş Takibi")
+def load_tasks() -> pd.DataFrame:
+    try:
+        df = conn.read(worksheet=WORKSHEET, ttl=0)
+    except Exception as e:
+        st.error(f"Veri okunurken hata oluştu: {e}")
+        st.stop()
 
-# --- KULLANICI SEÇİMİ ---
-PEOPLE = ["Fatih Sarı", "Abdullah Gözbaşı", "Ali Karabörklü"]
-selected_user = st.selectbox("Bu cihazı kullanan kişi:", ["Seçiniz..."] + PEOPLE)
+    if df is None or df.empty:
+        df = pd.DataFrame(columns=COLUMNS)
 
-if selected_user == "Seçiniz...":
-    st.warning("⚠️ İşlem yapabilmek için lütfen yukarıdan kullanıcı seçiniz.")
+    for col in COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+
+    # Boş satırları temizle (Google Sheets bazen tamamen boş satırlar döndürebilir)
+    df = df.dropna(how="all")
+
+    # Tip düzeltmeleri
+    df["silindi"] = df["silindi"].fillna(False).astype(bool)
+    for col in ["gorev", "aciklama", "sorumlu", "durum", "tarih", "id"]:
+        df[col] = df[col].fillna("").astype(str)
+
+    return df.reset_index(drop=True)
+
+
+def save_tasks(df: pd.DataFrame):
+    conn.update(worksheet=WORKSHEET, data=df[COLUMNS])
+    st.cache_data.clear()
+
+
+# --- KULLANICI GİRİŞİ (Şifreli) ---
+def check_login():
+    if st.session_state.get("logged_in"):
+        return True
+
+    st.title("🔒 Giriş Yap")
+    users = dict(st.secrets.get("users", {}))
+    username = st.selectbox("Kullanıcı adı:", ["Seçiniz..."] + list(users.keys()))
+    password = st.text_input("Şifre:", type="password")
+
+    if st.button("Giriş Yap"):
+        if username == "Seçiniz...":
+            st.error("Lütfen kullanıcı adı seçiniz.")
+        elif username in users and password == users[username]:
+            st.session_state["logged_in"] = True
+            st.session_state["current_user"] = username
+            st.rerun()
+        else:
+            st.error("Kullanıcı adı veya şifre hatalı.")
+
+    return False
+
+
+if not check_login():
+    st.stop()
+
+selected_user = st.session_state["current_user"]
+
+# --- ÇIKIŞ BUTONU ---
+top_col1, top_col2 = st.columns([4, 1])
+with top_col1:
+    st.title("🛋️ Satın Alma Görev Takip")
+    st.caption(f"Yatak Üretim Fabrikası · Canlı İş Takibi · Giriş yapan: **{selected_user}**")
+with top_col2:
+    if st.button("Çıkış"):
+        st.session_state["logged_in"] = False
+        st.rerun()
 
 st.divider()
 
 # --- VERİLERİ YÜKLE ---
 df = load_tasks()
 
-# Eğer veritabanı tamamen boşsa ilk varsayılan verileri yükle
+# Sheet tamamen boşsa ilk varsayılan verileri yükle
 if df.empty:
-    seed_data = [
-        {"id": "seed-1", "tarih": "2025-01-30", "gorev": "400 adet FF keçesi fazla geldi, MTAY ile görüşülecek.", "aciklama": "Yeni siparişte kullanılacak.", "durum": "kapali", "silindi": False},
-        {"id": "seed-2", "tarih": "2026-02-19", "gorev": "NEC fermuar numune gönderimi.", "aciklama": "", "durum": "acik", "silindi": False},
-        {"id": "seed-3", "tarih": "2026-02-25", "gorev": "Tedarikçi kategorize çalışması.", "aciklama": "", "durum": "acik", "silindi": False},
-    ]
-    supabase.table("tasks").insert(seed_data).execute()
+    seed_data = pd.DataFrame([
+        {"id": "seed-1", "tarih": "2025-01-30", "gorev": "400 adet FF keçesi fazla geldi, MTAY ile görüşülecek.",
+         "aciklama": "Yeni siparişte kullanılacak.", "sorumlu": "", "durum": "kapali", "silindi": False,
+         "tamamlanma_tarihi": "", "silinme_tarihi": "", "silen": "", "created_at": str(datetime.datetime.now())},
+        {"id": "seed-2", "tarih": "2026-02-19", "gorev": "NEC fermuar numune gönderimi.",
+         "aciklama": "", "sorumlu": "", "durum": "acik", "silindi": False,
+         "tamamlanma_tarihi": "", "silinme_tarihi": "", "silen": "", "created_at": str(datetime.datetime.now())},
+        {"id": "seed-3", "tarih": "2026-02-25", "gorev": "Tedarikçi kategorize çalışması.",
+         "aciklama": "", "sorumlu": "", "durum": "acik", "silindi": False,
+         "tamamlanma_tarihi": "", "silinme_tarihi": "", "silen": "", "created_at": str(datetime.datetime.now())},
+    ])
+    save_tasks(seed_data)
     st.rerun()
 
 # Silinmemiş görevleri filtrele
@@ -94,58 +155,58 @@ with tab1:
     st.write(f"**Toplam {len(filtered_df)} görev gösteriliyor:**")
 
     for idx, row in filtered_df.iterrows():
-        with st.expander(f"**{row['gorev']}** ({row.get('sorumlu', 'Atanmadı')})"):
-            st.write(f"**Açıklama:** {row.get('aciklama', '-')}")
-            st.write(f"**Tarih:** {row.get('tarih', '-')}")
-            
-            c1, c2, c3 = st.columns(3)
-            
+        with st.expander(f"**{row['gorev']}** ({row.get('sorumlu') or 'Atanmadı'})"):
+            st.write(f"**Açıklama:** {row.get('aciklama', '-') or '-'}")
+            st.write(f"**Tarih:** {row.get('tarih', '-') or '-'}")
+
+            c1, c2 = st.columns(2)
+
             # Durum Değiştirme
             if c1.button("🔄 Durum Değiştir", key=f"status_{row['id']}"):
                 next_status = "devam" if row["durum"] == "acik" else ("kapali" if row["durum"] == "devam" else "acik")
-                supabase.table("tasks").update({
-                    "durum": next_status,
-                    "tamamlanma_tarihi": str(datetime.date.today()) if next_status == "kapali" else None
-                }).eq("id", row["id"]).execute()
+                df.loc[df["id"] == row["id"], "durum"] = next_status
+                df.loc[df["id"] == row["id"], "tamamlanma_tarihi"] = str(datetime.date.today()) if next_status == "kapali" else ""
+                save_tasks(df)
                 st.toast(f"Görev durumu '{next_status.upper()}' olarak güncellendi!")
                 st.rerun()
 
             # Silme
             if c2.button("🗑️ Sil", key=f"del_{row['id']}"):
-                if selected_user == "Seçiniz...":
-                    st.error("Silmek için kullanıcı seçmelisiniz!")
-                else:
-                    supabase.table("tasks").update({
-                        "silindi": True,
-                        "silinme_tarihi": str(datetime.date.today()),
-                        "silen": selected_user
-                    }).eq("id", row["id"]).execute()
-                    st.toast("Görev silindi!")
-                    st.rerun()
+                df.loc[df["id"] == row["id"], "silindi"] = True
+                df.loc[df["id"] == row["id"], "silinme_tarihi"] = str(datetime.date.today())
+                df.loc[df["id"] == row["id"], "silen"] = selected_user
+                save_tasks(df)
+                st.toast("Görev silindi!")
+                st.rerun()
 
 # TAB 2: YENİ GÖREV EKLE
 with tab2:
     with st.form("new_task_form"):
         f_gorev = st.text_input("Görev Tanımı*")
         f_aciklama = st.text_area("Açıklama / Detay")
-        f_sorumlu = st.selectbox("Sorumlu", [""] + PEOPLE)
+        f_sorumlu = st.selectbox("Sorumlu", [""] + list(dict(st.secrets.get("users", {})).keys()))
         f_tarih = st.date_input("Görev Tarihi", datetime.date.today())
-        
+
         submitted = st.form_submit_button("💾 Kaydet")
         if submitted:
             if not f_gorev.strip():
                 st.error("Lütfen görev tanımını boş bırakmayın!")
             else:
-                new_data = {
+                new_row = pd.DataFrame([{
                     "id": f"task-{int(datetime.datetime.now().timestamp())}",
                     "gorev": f_gorev,
                     "aciklama": f_aciklama,
                     "sorumlu": f_sorumlu,
                     "tarih": str(f_tarih),
                     "durum": "acik",
-                    "silindi": False
-                }
-                supabase.table("tasks").insert(new_data).execute()
+                    "silindi": False,
+                    "tamamlanma_tarihi": "",
+                    "silinme_tarihi": "",
+                    "silen": "",
+                    "created_at": str(datetime.datetime.now()),
+                }])
+                df = pd.concat([df, new_row], ignore_index=True)
+                save_tasks(df)
                 st.success("Yeni görev başarıyla eklendi!")
                 st.rerun()
 
@@ -156,14 +217,14 @@ with tab3:
         try:
             excel_df = pd.read_excel(uploaded_file)
             st.write("Yüklenecek Veri Önizlemesi:", excel_df.head())
-            
+
             if st.button("📤 Verileri Veritabanına Aktar"):
                 new_records = []
                 for idx, row in excel_df.iterrows():
                     gorev = row.get("Görev Tanımı") or row.get("Görev") or row.get("Gorev")
                     if pd.isna(gorev):
                         continue
-                    
+
                     new_records.append({
                         "id": f"excel-{int(datetime.datetime.now().timestamp())}-{idx}",
                         "gorev": str(gorev),
@@ -171,11 +232,16 @@ with tab3:
                         "sorumlu": str(row.get("Sorumlu", "")),
                         "tarih": str(datetime.date.today()),
                         "durum": "acik",
-                        "silindi": False
+                        "silindi": False,
+                        "tamamlanma_tarihi": "",
+                        "silinme_tarihi": "",
+                        "silen": "",
+                        "created_at": str(datetime.datetime.now()),
                     })
-                
+
                 if new_records:
-                    supabase.table("tasks").insert(new_records).execute()
+                    df = pd.concat([df, pd.DataFrame(new_records)], ignore_index=True)
+                    save_tasks(df)
                     st.success(f"{len(new_records)} adet yeni görev Excel'den aktarıldı!")
                     st.rerun()
         except Exception as e:
