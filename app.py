@@ -253,7 +253,7 @@ with tab4:
     st.subheader("📈 Görev Raporu")
 
     r1, r2 = st.columns(2)
-    durum_secim = r1.multiselect("Durum", ["acik", "devam", "kapali"], default=["acik", "devam", "kapali"],
+    durum_secim = r1.multiselect("Durum", ["acik", "devam", "kapali", "silindi"], default=["acik", "devam", "kapali", "silindi"],
                                   format_func=lambda x: {"acik": "Açık", "devam": "Devam Eden", "kapali": "Kapalı"}[x])
     sorumlu_listesi = sorted([s for s in df_active["sorumlu"].unique() if s])
     sorumlu_secim = r2.multiselect("Sorumlu", sorumlu_listesi, default=sorumlu_listesi)
