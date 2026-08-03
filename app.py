@@ -419,7 +419,7 @@ st.markdown(
     .imza {
         position: fixed;
         bottom: 8px;
-        right: 14px;
+        left: 14px;
         font-size: 11px;
         color: #9a9a9a;
         opacity: 0.7;
