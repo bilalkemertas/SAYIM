@@ -422,7 +422,7 @@ st.markdown(
         left: 14px;
         font-size: 11px;
         color: #9a9a9a;
-        opacity: 0.7;
+        opacity: 0.9;
         z-index: 100;
     }
     </style>
