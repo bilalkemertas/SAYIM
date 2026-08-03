@@ -411,3 +411,22 @@ with tab5:
             file_name=st.session_state["rapor_dosya_adi"],
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
+
+# --- İMZA ---
+st.markdown(
+    """
+    <style>
+    .imza {
+        position: fixed;
+        bottom: 8px;
+        right: 14px;
+        font-size: 11px;
+        color: #9a9a9a;
+        opacity: 0.7;
+        z-index: 100;
+    }
+    </style>
+    <div class="imza">created by Bilal KEMERTAŞ 🛠️</div>
+    """,
+    unsafe_allow_html=True
+)
