@@ -2,10 +2,23 @@ import streamlit as st
 import pandas as pd
 import datetime
 import io
+from zoneinfo import ZoneInfo
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from streamlit_gsheets import GSheetsConnection
+
+TR_TZ = ZoneInfo("Europe/Istanbul")
+
+
+def tr_now() -> datetime.datetime:
+    """Türkiye yerel saatiyle şu anki zaman (tz bilgisi olmadan, sheet'e yazmak için)."""
+    return datetime.datetime.now(TR_TZ).replace(tzinfo=None)
+
+
+def tr_today() -> datetime.date:
+    """Türkiye yerel tarihiyle bugün."""
+    return tr_now().date()
 
 # --- SAYFA AYARLARI (Mobil Uyumlu) ---
 st.set_page_config(
@@ -89,6 +102,8 @@ if not check_login():
     st.stop()
 
 selected_user = st.session_state["current_user"]
+DURUM_ETIKET = {"acik": "Açık", "devam": "Devam Eden", "kapali": "Kapalı"}
+PEOPLE = list(dict(st.secrets.get("users", {})).keys())
 
 # --- ÇIKIŞ BUTONU ---
 top_col1, top_col2 = st.columns([4, 1])
@@ -148,29 +163,51 @@ with tab1:
 
     for idx, row in filtered_df.iterrows():
         with st.expander(f"**{row['gorev']}** ({row.get('sorumlu') or 'Atanmadı'})"):
-            st.write(f"**Açıklama:** {row.get('aciklama', '-') or '-'}")
-            st.write(f"**Tarih:** {row.get('tarih', '-') or '-'}")
+            st.caption(f"Mevcut durum: **{DURUM_ETIKET.get(row['durum'], row['durum'])}**")
             if row.get("tamamlayan"):
-                st.write(f"**Tamamlayan:** {row.get('tamamlayan')} · {row.get('tamamlanma_tarihi', '-')}")
+                st.caption(f"Tamamlayan: {row.get('tamamlayan')} · {row.get('tamamlanma_tarihi', '-')}")
 
-            c1, c2 = st.columns(2)
+            with st.form(f"edit_form_{row['id']}"):
+                mevcut_sorumlu_index = (PEOPLE.index(row["sorumlu"]) + 1) if row["sorumlu"] in PEOPLE else 0
+                yeni_sorumlu = st.selectbox("Sorumlu", [""] + PEOPLE, index=mevcut_sorumlu_index, key=f"sorumlu_{row['id']}")
 
-            if c1.button("🔄 Durum Değiştir", key=f"status_{row['id']}"):
-                next_status = "devam" if row["durum"] == "acik" else ("kapali" if row["durum"] == "devam" else "acik")
-                df.loc[df["id"] == row["id"], "durum"] = next_status
-                if next_status == "kapali":
-                    df.loc[df["id"] == row["id"], "tamamlanma_tarihi"] = str(datetime.date.today())
-                    df.loc[df["id"] == row["id"], "tamamlayan"] = selected_user
-                else:
-                    df.loc[df["id"] == row["id"], "tamamlanma_tarihi"] = ""
-                    df.loc[df["id"] == row["id"], "tamamlayan"] = ""
-                save_tasks(df)
-                st.toast(f"Görev durumu '{next_status.upper()}' olarak güncellendi!")
-                st.rerun()
+                try:
+                    mevcut_tarih = datetime.datetime.strptime(row["tarih"], "%Y-%m-%d").date()
+                except (ValueError, TypeError):
+                    mevcut_tarih = tr_today()
+                yeni_tarih = st.date_input("Termin Tarihi", value=mevcut_tarih, key=f"tarih_{row['id']}")
 
-            if c2.button("🗑️ Sil", key=f"del_{row['id']}"):
+                yeni_aciklama = st.text_area("Açıklama", value=row.get("aciklama", ""), key=f"aciklama_{row['id']}")
+
+                durum_secenekleri = ["acik", "devam", "kapali"]
+                mevcut_durum_index = durum_secenekleri.index(row["durum"]) if row["durum"] in durum_secenekleri else 0
+                yeni_durum = st.selectbox(
+                    "Durum", durum_secenekleri, index=mevcut_durum_index,
+                    format_func=lambda x: DURUM_ETIKET[x], key=f"durum_{row['id']}"
+                )
+
+                guncelle = st.form_submit_button("💾 Güncelle")
+
+                if guncelle:
+                    df.loc[df["id"] == row["id"], "sorumlu"] = yeni_sorumlu
+                    df.loc[df["id"] == row["id"], "tarih"] = str(yeni_tarih)
+                    df.loc[df["id"] == row["id"], "aciklama"] = yeni_aciklama
+                    df.loc[df["id"] == row["id"], "durum"] = yeni_durum
+
+                    if yeni_durum == "kapali" and row["durum"] != "kapali":
+                        df.loc[df["id"] == row["id"], "tamamlanma_tarihi"] = str(tr_today())
+                        df.loc[df["id"] == row["id"], "tamamlayan"] = selected_user
+                    elif yeni_durum != "kapali":
+                        df.loc[df["id"] == row["id"], "tamamlanma_tarihi"] = ""
+                        df.loc[df["id"] == row["id"], "tamamlayan"] = ""
+
+                    save_tasks(df)
+                    st.toast("Görev güncellendi!")
+                    st.rerun()
+
+            if st.button("🗑️ Sil", key=f"del_{row['id']}"):
                 df.loc[df["id"] == row["id"], "silindi"] = True
-                df.loc[df["id"] == row["id"], "silinme_tarihi"] = str(datetime.date.today())
+                df.loc[df["id"] == row["id"], "silinme_tarihi"] = str(tr_today())
                 df.loc[df["id"] == row["id"], "silen"] = selected_user
                 save_tasks(df)
                 st.toast("Görev silindi!")
@@ -181,8 +218,8 @@ with tab2:
     with st.form("new_task_form"):
         f_gorev = st.text_input("Görev Tanımı*")
         f_aciklama = st.text_area("Açıklama / Detay")
-        f_sorumlu = st.selectbox("Sorumlu", [""] + list(dict(st.secrets.get("users", {})).keys()))
-        f_tarih = st.date_input("Görev Tarihi", datetime.date.today())
+        f_sorumlu = st.selectbox("Sorumlu", [""] + PEOPLE)
+        f_tarih = st.date_input("Görev Tarihi", tr_today())
 
         submitted = st.form_submit_button("💾 Kaydet")
         if submitted:
@@ -190,7 +227,7 @@ with tab2:
                 st.error("Lütfen görev tanımını boş bırakmayın!")
             else:
                 new_row = pd.DataFrame([{
-                    "id": f"task-{int(datetime.datetime.now().timestamp())}",
+                    "id": f"task-{int(tr_now().timestamp())}",
                     "gorev": f_gorev,
                     "aciklama": f_aciklama,
                     "sorumlu": f_sorumlu,
@@ -200,7 +237,7 @@ with tab2:
                     "tamamlanma_tarihi": "",
                     "silinme_tarihi": "",
                     "silen": "",
-                    "created_at": str(datetime.datetime.now()),
+                    "created_at": str(tr_now()),
                     "olusturan": selected_user,
                     "tamamlayan": "",
                 }])
@@ -210,41 +247,84 @@ with tab2:
                 st.rerun()
 
 # TAB 3: EXCEL IMPORT
+def _tr_normalize(s):
+    s = str(s).strip()
+    ceviri = str.maketrans({
+        "İ": "i", "I": "i", "ı": "i",
+        "Ö": "o", "ö": "o", "Ü": "u", "ü": "u",
+        "Ş": "s", "ş": "s", "Ç": "c", "ç": "c", "Ğ": "g", "ğ": "g",
+    })
+    return s.translate(ceviri).lower()
+
+
+def excel_kolon_bul(columns, adaylar):
+    normalized = {_tr_normalize(c): c for c in columns}
+    for aday in adaylar:
+        key = _tr_normalize(aday)
+        if key in normalized:
+            return normalized[key]
+    return None
+
 with tab3:
+    st.caption("Excel dosyanızda en az bir 'Görev' sütunu bulunmalı. Sütun adları büyük/küçük harfe duyarlı değildir.")
     uploaded_file = st.file_uploader("Excel dosyasını yükleyin (.xlsx)", type=["xlsx", "xls"])
     if uploaded_file:
         try:
             excel_df = pd.read_excel(uploaded_file)
             st.write("Yüklenecek Veri Önizlemesi:", excel_df.head())
 
-            if st.button("📤 Verileri Veritabanına Aktar"):
-                new_records = []
-                for idx, row in excel_df.iterrows():
-                    gorev = row.get("Görev Tanımı") or row.get("Görev") or row.get("Gorev")
-                    if pd.isna(gorev):
-                        continue
+            gorev_col = excel_kolon_bul(excel_df.columns, ["Görev Tanımı", "Görev", "Gorev", "Gorev Tanimi", "Görev Adı"])
+            aciklama_col = excel_kolon_bul(excel_df.columns, ["Açıklama", "Aciklama", "Detay", "Açıklama/Detay"])
+            sorumlu_col = excel_kolon_bul(excel_df.columns, ["Sorumlu"])
+            tarih_col = excel_kolon_bul(excel_df.columns, ["Tarih", "Görev Tarihi", "Termin", "Termin Tarihi"])
 
-                    new_records.append({
-                        "id": f"excel-{int(datetime.datetime.now().timestamp())}-{idx}",
-                        "gorev": str(gorev),
-                        "aciklama": str(row.get("Açıklama", "")),
-                        "sorumlu": str(row.get("Sorumlu", "")),
-                        "tarih": str(datetime.date.today()),
-                        "durum": "acik",
-                        "silindi": False,
-                        "tamamlanma_tarihi": "",
-                        "silinme_tarihi": "",
-                        "silen": "",
-                        "created_at": str(datetime.datetime.now()),
-                        "olusturan": selected_user,
-                        "tamamlayan": "",
-                    })
+            if not gorev_col:
+                st.error(
+                    "Görev sütunu bulunamadı. Excel'deki sütun başlıklarınız: "
+                    + ", ".join(str(c) for c in excel_df.columns)
+                    + " — lütfen sütunlardan birinin adı 'Görev' veya 'Görev Tanımı' olsun."
+                )
+            else:
+                st.success(f"Görev sütunu olarak **'{gorev_col}'** kullanılacak.")
 
-                if new_records:
-                    df = pd.concat([df, pd.DataFrame(new_records)], ignore_index=True)
-                    save_tasks(df)
-                    st.success(f"{len(new_records)} adet yeni görev Excel'den aktarıldı!")
-                    st.rerun()
+                if st.button("📤 Verileri Veritabanına Aktar"):
+                    new_records = []
+                    atlanan = 0
+                    for idx, row in excel_df.iterrows():
+                        gorev = row.get(gorev_col)
+                        if pd.isna(gorev) or not str(gorev).strip():
+                            atlanan += 1
+                            continue
+
+                        ham_tarih = row.get(tarih_col) if tarih_col else None
+                        try:
+                            gorev_tarihi = pd.to_datetime(ham_tarih).date() if ham_tarih and not pd.isna(ham_tarih) else tr_today()
+                        except Exception:
+                            gorev_tarihi = tr_today()
+
+                        new_records.append({
+                            "id": f"excel-{int(tr_now().timestamp())}-{idx}",
+                            "gorev": str(gorev).strip(),
+                            "aciklama": str(row.get(aciklama_col, "")).strip() if aciklama_col else "",
+                            "sorumlu": str(row.get(sorumlu_col, "")).strip() if sorumlu_col else "",
+                            "tarih": str(gorev_tarihi),
+                            "durum": "acik",
+                            "silindi": False,
+                            "tamamlanma_tarihi": "",
+                            "silinme_tarihi": "",
+                            "silen": "",
+                            "created_at": str(tr_now()),
+                            "olusturan": selected_user,
+                            "tamamlayan": "",
+                        })
+
+                    if new_records:
+                        df = pd.concat([df, pd.DataFrame(new_records)], ignore_index=True)
+                        save_tasks(df)
+                        st.success(f"{len(new_records)} adet yeni görev Excel'den aktarıldı! ({atlanan} satır boş olduğu için atlandı)")
+                        st.rerun()
+                    else:
+                        st.warning(f"Aktarılacak kayıt bulunamadı. {atlanan} satır boş/geçersiz olduğu için atlandı.")
         except Exception as e:
             st.error(f"Excel okunurken hata oluştu: {e}")
 
@@ -272,7 +352,7 @@ with tab4:
 
     tarih_araligi = r4.date_input(
         "Görev tarihi aralığı",
-        value=(datetime.date.today() - datetime.timedelta(days=30), datetime.date.today())
+        value=(tr_today() - datetime.timedelta(days=30), tr_today())
     )
 
     rapor_df = rapor_kaynak.copy()
@@ -342,7 +422,7 @@ def generate_weekly_report_docx(donem_baslangic, donem_bitis, tamamlanan_donem, 
     meta.add_run("Hazırlayan: ").bold = True
     meta.add_run(f"{hazirlayan}\n")
     meta.add_run("Oluşturma Tarihi: ").bold = True
-    meta.add_run(datetime.date.today().strftime('%d.%m.%Y'))
+    meta.add_run(tr_today().strftime('%d.%m.%Y'))
 
     doc.add_heading("Genel Durum (Anlık)", level=2)
     ozet = doc.add_paragraph()
@@ -385,9 +465,9 @@ with tab5:
     st.caption("Raporu oluşturup Word (.docx) olarak indirin, dilediğiniz gibi düzenleyip kendi e-posta istemcinizden gönderin.")
 
     donem_col1, donem_col2 = st.columns(2)
-    varsayilan_baslangic = datetime.date.today() - datetime.timedelta(days=7)
+    varsayilan_baslangic = tr_today() - datetime.timedelta(days=7)
     donem_baslangic = donem_col1.date_input("Dönem başlangıcı", varsayilan_baslangic, key="donem_baslangic")
-    donem_bitis = donem_col2.date_input("Dönem bitişi", datetime.date.today(), key="donem_bitis")
+    donem_bitis = donem_col2.date_input("Dönem bitişi", tr_today(), key="donem_bitis")
 
     if st.button("📝 Raporu Oluştur"):
         if donem_baslangic > donem_bitis:
