@@ -2,6 +2,7 @@ streamlit
 pandas
 openpyxl
 python-docx
+tzdata
 st-gsheets-connection
 gspread
 gspread-dataframe
