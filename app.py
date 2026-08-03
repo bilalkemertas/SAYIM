@@ -252,14 +252,22 @@ with tab3:
 with tab4:
     st.subheader("📈 Görev Raporu")
 
+    rapor_kaynak = df.copy()
+    rapor_kaynak["goruntu_durum"] = rapor_kaynak.apply(
+        lambda r: "silindi" if r["silindi"] else r["durum"], axis=1
+    )
+
     r1, r2 = st.columns(2)
-    durum_secim = r1.multiselect("Durum", ["acik", "devam", "kapali", "silindi"], default=["acik", "devam", "kapali", "silindi"],
-                                  format_func=lambda x: {"acik": "Açık", "devam": "Devam Eden", "kapali": "Kapalı"}[x])
-    sorumlu_listesi = sorted([s for s in df_active["sorumlu"].unique() if s])
+    durum_secim = r1.multiselect(
+        "Durum", ["acik", "devam", "kapali", "silindi"],
+        default=["acik", "devam", "kapali"],
+        format_func=lambda x: {"acik": "Açık", "devam": "Devam Eden", "kapali": "Kapalı", "silindi": "Silindi"}[x]
+    )
+    sorumlu_listesi = sorted([s for s in rapor_kaynak["sorumlu"].unique() if s])
     sorumlu_secim = r2.multiselect("Sorumlu", sorumlu_listesi, default=sorumlu_listesi)
 
     r3, r4 = st.columns(2)
-    tamamlayan_listesi = sorted([s for s in df_active["tamamlayan"].unique() if s])
+    tamamlayan_listesi = sorted([s for s in rapor_kaynak["tamamlayan"].unique() if s])
     tamamlayan_secim = r3.multiselect("Tamamlayan", tamamlayan_listesi, default=tamamlayan_listesi)
 
     tarih_araligi = r4.date_input(
@@ -267,8 +275,8 @@ with tab4:
         value=(datetime.date.today() - datetime.timedelta(days=30), datetime.date.today())
     )
 
-    rapor_df = df_active.copy()
-    rapor_df = rapor_df[rapor_df["durum"].isin(durum_secim)]
+    rapor_df = rapor_kaynak.copy()
+    rapor_df = rapor_df[rapor_df["goruntu_durum"].isin(durum_secim)]
     if sorumlu_secim:
         rapor_df = rapor_df[rapor_df["sorumlu"].isin(sorumlu_secim) | (rapor_df["sorumlu"] == "")]
     if tamamlayan_secim:
@@ -288,7 +296,10 @@ with tab4:
 
     st.write(f"**{len(rapor_df)} görev bulundu**")
     st.dataframe(
-        rapor_df[["gorev", "sorumlu", "durum", "tarih", "tamamlanma_tarihi", "tamamlayan", "olusturan"]],
+        rapor_df[["gorev", "sorumlu", "goruntu_durum", "tarih", "tamamlanma_tarihi",
+                  "tamamlayan", "olusturan", "silinme_tarihi", "silen"]].rename(
+            columns={"goruntu_durum": "durum"}
+        ),
         use_container_width=True,
         hide_index=True
     )
@@ -422,7 +433,7 @@ st.markdown(
         left: 14px;
         font-size: 11px;
         color: #9a9a9a;
-        opacity: 0.9;
+        opacity: 0.7;
         z-index: 100;
     }
     </style>
