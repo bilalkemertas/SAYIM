@@ -8,7 +8,7 @@ from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
-import anthropic
+from google import genai
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -584,9 +584,9 @@ with tab4:
 def generate_ai_summary(donem_baslangic, donem_bitis, tamamlanan_donem, yeni_donem,
                          problem_donem, aksiyon_donem, hedef_donem, yonetim_donem,
                          acik_sayisi, devam_sayisi, kapali_sayisi):
-    api_key = st.secrets.get("anthropic_api_key")
+    api_key = st.secrets.get("gemini_api_key")
     if not api_key:
-        return None, "secrets.toml dosyasına 'anthropic_api_key' eklenmemiş."
+        return None, "secrets.toml dosyasına 'gemini_api_key' eklenmemiş."
 
     def liste_metni(dataframe):
         if dataframe.empty:
@@ -616,21 +616,17 @@ Yönetim desteği gereken konular:
 """
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=500,
-            messages=[{
-                "role": "user",
-                "content": (
-                    "Aşağıdaki satın alma/depo görev verilerine dayanarak, üst yönetime sunulacak "
-                    "3-5 cümlelik kısa ve profesyonel bir Türkçe yönetici özeti yaz. "
-                    "Sadece özet metnini yaz; başlık, madde işareti veya ek açıklama ekleme.\n\n"
-                    f"{veri_metni}"
-                )
-            }]
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=(
+                "Aşağıdaki satın alma/depo görev verilerine dayanarak, üst yönetime sunulacak "
+                "3-5 cümlelik kısa ve profesyonel bir Türkçe yönetici özeti yaz. "
+                "Sadece özet metnini yaz; başlık, madde işareti veya ek açıklama ekleme.\n\n"
+                f"{veri_metni}"
+            )
         )
-        return message.content[0].text.strip(), None
+        return response.text.strip(), None
     except Exception as e:
         return None, str(e)
 
