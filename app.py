@@ -302,6 +302,45 @@ GRAY_ROW = "F4F4F4"
 ORANGE_ROW = "FFF1E6"
 NOTE_GRAY = "888888"
 
+# Bu liste hem şablon indirmede (Tab3) hem de indirilen rapor Excel'inde (Tab4)
+# birebir aynı şekilde kullanılır — tek kaynak burasıdır, iki yerde de değişmeden kullanılır.
+TALIMAT_SATIRLARI = [
+    "  SATIN ALMA HAFTALIK FAALİYET RAPORU — VERİ ŞABLONU",
+    "",
+    "Bu dosyayı doldurup uygulamadaki \"📊 Excel'den Toplu Yükle\" sekmesinden yükleyin.",
+    "",
+    "1) \"Gorevler\" sekmesine o haftanın görevlerini girin",
+    "Her satır bir görevi temsil eder. Kolonlar:",
+    "    tarih  →  Görevin başladığı tarih (YYYY-AA-GG, örn. 2026-08-04)",
+    "    gorev  →  Görevin kısa başlığı",
+    "    aciklama  →  Görevle ilgili detay / durum notu",
+    "    sorumlu  →  Görevden sorumlu kişi (örn. F.Sarı, A.Gözbaşı)",
+    "    durum  →  kapali (tamamlandı) veya devam (sürüyor) — hücreye tıklayınca açılır listeden seçin",
+    "    silindi  →  Görev iptal/silindiyse TRUE, aksi halde FALSE bırakın",
+    "    tamamlanma_tarihi  →  Sadece durum=kapali olan görevlerde doldurun (YYYY-AA-GG)",
+    "",
+    "2) Problemler / Aksiyonlar / Hedefler / Yönetim Desteği notlarını EKLEMEK için",
+    "Aynı sekmenin altına, görev satırları gibi yeni satırlar ekleyin ama:",
+    "    durum kolonuna → problem  /  aksiyon  /  hedef  /  yonetim yazın (açılır listede bunlar da var)",
+    "    gorev kolonuna → not metninin tamamını yazın",
+    "    tarih, aciklama, sorumlu, tamamlanma_tarihi kolonlarını boş bırakabilirsiniz",
+    "Bu satırlar görev sayılmaz; KPI hesaplarına dahil edilmez.",
+    "",
+    "3) Geçerli \"durum\" değerleri",
+    "    kapali        → tamamlanmış görev",
+    "    devam         → sürmekte olan görev",
+    "    problem       → \"Karşılaşılan Problemler\" bölümüne not",
+    "    aksiyon       → \"Alınan Aksiyonlar\" bölümüne not",
+    "    hedef         → \"Bir Sonraki Haftanın Hedefleri\" bölümüne not",
+    "    yonetim       → \"Yönetim Desteği Gerektiren Konular\" bölümüne not",
+    "",
+    "4) \"Gorevler\" sekmesindeki gri ve turuncu renkli satırlar örnektir",
+    "Kendi verinizi girdikten sonra bu örnek satırları silebilir ya da üzerine yazabilirsiniz.",
+    "",
+    "5) Doldurduktan sonra",
+    "Dosyayı .xlsx olarak kaydedin ve \"Excel'den Toplu Yükle\" sekmesinden yükleyip aktarın.",
+]
+
 
 def generate_template_xlsx() -> bytes:
     wb = Workbook()
@@ -309,43 +348,7 @@ def generate_template_xlsx() -> bytes:
     # --- Sayfa 1: Talimatlar ---
     ws_t = wb.active
     ws_t.title = "Talimatlar"
-    talimat_satirlari = [
-        "  SATIN ALMA HAFTALIK FAALİYET RAPORU — VERİ ŞABLONU",
-        "",
-        "Bu dosyayı doldurup uygulamadaki \"📊 Excel'den Toplu Yükle\" sekmesinden yükleyin.",
-        "",
-        "1) \"Gorevler\" sekmesine o haftanın görevlerini girin",
-        "Her satır bir görevi temsil eder. Kolonlar:",
-        "    tarih  →  Görevin başladığı tarih (YYYY-AA-GG, örn. 2026-08-04)",
-        "    gorev  →  Görevin kısa başlığı",
-        "    aciklama  →  Görevle ilgili detay / durum notu",
-        "    sorumlu  →  Görevden sorumlu kişi (örn. F.Sarı, A.Gözbaşı)",
-        "    durum  →  kapali (tamamlandı) veya devam (sürüyor) — hücreye tıklayınca açılır listeden seçin",
-        "    silindi  →  Görev iptal/silindiyse TRUE, aksi halde FALSE bırakın",
-        "    tamamlanma_tarihi  →  Sadece durum=kapali olan görevlerde doldurun (YYYY-AA-GG)",
-        "",
-        "2) Problemler / Aksiyonlar / Hedefler / Yönetim Desteği notlarını EKLEMEK için",
-        "Aynı sekmenin altına, görev satırları gibi yeni satırlar ekleyin ama:",
-        "    durum kolonuna → problem  /  aksiyon  /  hedef  /  yonetim yazın (açılır listede bunlar da var)",
-        "    gorev kolonuna → not metninin tamamını yazın",
-        "    tarih, aciklama, sorumlu, tamamlanma_tarihi kolonlarını boş bırakabilirsiniz",
-        "Bu satırlar görev sayılmaz; KPI hesaplarına dahil edilmez.",
-        "",
-        "3) Geçerli \"durum\" değerleri",
-        "    kapali        → tamamlanmış görev",
-        "    devam         → sürmekte olan görev",
-        "    problem       → \"Karşılaşılan Problemler\" bölümüne not",
-        "    aksiyon       → \"Alınan Aksiyonlar\" bölümüne not",
-        "    hedef         → \"Bir Sonraki Haftanın Hedefleri\" bölümüne not",
-        "    yonetim       → \"Yönetim Desteği Gerektiren Konular\" bölümüne not",
-        "",
-        "4) \"Gorevler\" sekmesindeki gri ve turuncu renkli satırlar örnektir",
-        "Kendi verinizi girdikten sonra bu örnek satırları silebilir ya da üzerine yazabilirsiniz.",
-        "",
-        "5) Doldurduktan sonra",
-        "Dosyayı .xlsx olarak kaydedin ve \"Excel'den Toplu Yükle\" sekmesinden yükleyip aktarın.",
-    ]
-    for i, satir in enumerate(talimat_satirlari, start=1):
+    for i, satir in enumerate(TALIMAT_SATIRLARI, start=1):
         ws_t.cell(row=i, column=1, value=satir)
     ws_t.column_dimensions["A"].width = 100
 
@@ -659,23 +662,9 @@ Yönetim desteği gereken konular:
         ws_ozet.column_dimensions["A"].width = 22
         ws_ozet.column_dimensions["B"].width = 45
 
-        # --- Sayfa 2: Talimatlar ---
+        # --- Sayfa 2: Talimatlar (şablonla birebir aynı) ---
         ws_t = wb.create_sheet("Talimatlar")
-        talimat_satirlari = [
-            "  SATIN ALMA GÖREV RAPORU — AÇIKLAMA",
-            "",
-            "Bu dosya, uygulamadaki 'Rapor' sekmesinden seçilen filtrelere göre indirilmiştir.",
-            "",
-            "Sayfa 1 (Özet): Seçilen döneme ait yapay zeka yönetici özeti ve durum dağılımı.",
-            "Sayfa 2 (Talimatlar): Bu açıklama sayfası.",
-            "Sayfa 3 (Gorevler): Seçilen filtrelere uyan tüm görev/not kayıtları, uygulamanın",
-            "  toplu yükleme şablonuyla aynı kolon yapısında (tarih, gorev, aciklama, sorumlu,",
-            "  durum, silindi, tamamlanma_tarihi). Bu sayfa düzenlenip 'Excel'den Toplu Yükle'",
-            "  sekmesinden geri yüklenebilir.",
-            "",
-            "Geçerli 'durum' değerleri: acik, devam, kapali, problem, aksiyon, hedef, yonetim.",
-        ]
-        for i, satir in enumerate(talimat_satirlari, start=1):
+        for i, satir in enumerate(TALIMAT_SATIRLARI, start=1):
             ws_t.cell(row=i, column=1, value=satir)
         ws_t.column_dimensions["A"].width = 100
 
