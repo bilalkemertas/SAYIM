@@ -104,10 +104,13 @@ def check_login():
 
     st.title("🔒 Giriş Yap")
     users = dict(st.secrets.get("users", {}))
-    username = st.selectbox("Kullanıcı adı:", ["Seçiniz..."] + list(users.keys()))
-    password = st.text_input("Şifre:", type="password")
 
-    if st.button("Giriş Yap"):
+    with st.form("login_form"):
+        username = st.selectbox("Kullanıcı adı:", ["Seçiniz..."] + list(users.keys()))
+        password = st.text_input("Şifre:", type="password")
+        submit = st.form_submit_button("Giriş Yap")
+
+    if submit:
         if username == "Seçiniz...":
             st.error("Lütfen kullanıcı adı seçiniz.")
         elif username in users and password == users[username]:
@@ -618,7 +621,7 @@ Yönetim desteği gereken konular:
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash-lite",
             contents=(
                 "Aşağıdaki satın alma/depo görev verilerine dayanarak, üst yönetime sunulacak "
                 "3-5 cümlelik kısa ve profesyonel bir Türkçe yönetici özeti yaz. "
