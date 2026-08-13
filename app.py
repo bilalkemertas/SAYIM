@@ -561,25 +561,187 @@ with tab4:
     )
     st.dataframe(goruntu_df, use_container_width=True, hide_index=True)
 
-    xlsx_buf = io.BytesIO()
-    with pd.ExcelWriter(xlsx_buf, engine="openpyxl") as writer:
-        goruntu_df.to_excel(writer, index=False, sheet_name="Gorev Raporu")
-        ws_rapor = writer.sheets["Gorev Raporu"]
-        for c, kolon in enumerate(goruntu_df.columns, start=1):
-            cell = ws_rapor.cell(row=1, column=c)
+    st.caption(
+        "Excel raporu, yukarıdaki 'Görev tarihi aralığı' ve diğer filtrelere göre indirilir. "
+        "Yönetici özeti de aynı tarih aralığındaki verilere göre yazılır."
+    )
+
+    # --- YAPAY ZEKA İLE GENEL ÖZET (TAB4 için) ---
+    def generate_ai_summary_genel(donem_baslangic, donem_bitis, filtered_df):
+        api_key = st.secrets.get("groq_api_key")
+        if not api_key:
+            return None, "secrets.toml dosyasına 'groq_api_key' eklenmemiş."
+
+        def liste_metni(durum_deger):
+            alt = filtered_df[filtered_df["durum"] == durum_deger]
+            if alt.empty:
+                return "yok"
+            return "\n".join(f"- {str(r.get('gorev','')).strip()}" for _, r in alt.iterrows())
+
+        veri_metni = f"""Dönem: {donem_baslangic.strftime('%d.%m.%Y')} - {donem_bitis.strftime('%d.%m.%Y')}
+Toplam kayıt: {len(filtered_df)}
+
+Açık görevler:
+{liste_metni('acik')}
+
+Devam eden görevler:
+{liste_metni('devam')}
+
+Kapalı görevler:
+{liste_metni('kapali')}
+
+Problemler:
+{liste_metni('problem')}
+
+Aksiyonlar:
+{liste_metni('aksiyon')}
+
+Hedefler:
+{liste_metni('hedef')}
+
+Yönetim desteği gereken konular:
+{liste_metni('yonetim')}
+"""
+        try:
+            client = Groq(api_key=api_key)
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Aşağıdaki satın alma/depo görev verilerine dayanarak, üst yönetime sunulacak "
+                        "3-5 cümlelik kısa ve profesyonel bir Türkçe yönetici özeti yaz. "
+                        "Sadece özet metnini yaz; başlık, madde işareti veya ek açıklama ekleme.\n\n"
+                        f"{veri_metni}"
+                    )
+                }]
+            )
+            return completion.choices[0].message.content.strip(), None
+        except Exception as e:
+            return None, str(e)
+
+    # --- 3 SEKMELİ EXCEL RAPORU: Özet + Talimatlar + Gorevler (şablon formatı) ---
+    def generate_report_workbook(rapor_df_export, donem_baslangic, donem_bitis, ai_ozet, hazirlayan) -> bytes:
+        wb = Workbook()
+
+        # --- Sayfa 1: Özet ---
+        ws_ozet = wb.active
+        ws_ozet.title = "Özet"
+        baslik_cell = ws_ozet.cell(row=1, column=1, value="SATIN ALMA GÖREV RAPORU — ÖZET")
+        baslik_cell.font = Font(bold=True, size=14)
+        ws_ozet.cell(row=3, column=1, value="Dönem:").font = Font(bold=True)
+        ws_ozet.cell(row=3, column=2, value=f"{donem_baslangic.strftime('%d.%m.%Y')} — {donem_bitis.strftime('%d.%m.%Y')}")
+        ws_ozet.cell(row=4, column=1, value="Hazırlayan:").font = Font(bold=True)
+        ws_ozet.cell(row=4, column=2, value=hazirlayan)
+        ws_ozet.cell(row=5, column=1, value="Oluşturma Tarihi:").font = Font(bold=True)
+        ws_ozet.cell(row=5, column=2, value=tr_today().strftime('%d.%m.%Y'))
+
+        ws_ozet.cell(row=7, column=1, value="Yönetici Özeti").font = Font(bold=True, size=12)
+        ozet_hucre = ws_ozet.cell(row=8, column=1, value=ai_ozet or "Yapay zeka özeti oluşturulamadı.")
+        ozet_hucre.alignment = Alignment(wrap_text=True, vertical="top")
+        ws_ozet.merge_cells(start_row=8, start_column=1, end_row=8, end_column=6)
+        ws_ozet.row_dimensions[8].height = 90
+
+        durum_sayaclari = rapor_df_export["durum"].value_counts().to_dict()
+        r = 11
+        ws_ozet.cell(row=r, column=1, value="Durum Dağılımı").font = Font(bold=True, size=12)
+        r += 1
+        for c, h in enumerate(["Durum", "Adet"], start=1):
+            cell = ws_ozet.cell(row=r, column=c, value=h)
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor=NAVY)
-            genislik = max(14, min(50, int(goruntu_df[kolon].astype(str).str.len().max() or 10) + 4))
-            ws_rapor.column_dimensions[get_column_letter(c)].width = genislik
-        ws_rapor.freeze_panes = "A2"
-    xlsx_buf.seek(0)
+        r += 1
+        for durum_key in ["acik", "devam", "kapali", "problem", "aksiyon", "hedef", "yonetim"]:
+            ws_ozet.cell(row=r, column=1, value=DURUM_ETIKET.get(durum_key, durum_key))
+            ws_ozet.cell(row=r, column=2, value=int(durum_sayaclari.get(durum_key, 0)))
+            r += 1
 
-    st.download_button(
-        "⬇️ Excel (.xlsx) olarak indir",
-        data=xlsx_buf.getvalue(),
-        file_name="gorev_raporu.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        ws_ozet.column_dimensions["A"].width = 22
+        ws_ozet.column_dimensions["B"].width = 45
+
+        # --- Sayfa 2: Talimatlar ---
+        ws_t = wb.create_sheet("Talimatlar")
+        talimat_satirlari = [
+            "  SATIN ALMA GÖREV RAPORU — AÇIKLAMA",
+            "",
+            "Bu dosya, uygulamadaki 'Rapor' sekmesinden seçilen filtrelere göre indirilmiştir.",
+            "",
+            "Sayfa 1 (Özet): Seçilen döneme ait yapay zeka yönetici özeti ve durum dağılımı.",
+            "Sayfa 2 (Talimatlar): Bu açıklama sayfası.",
+            "Sayfa 3 (Gorevler): Seçilen filtrelere uyan tüm görev/not kayıtları, uygulamanın",
+            "  toplu yükleme şablonuyla aynı kolon yapısında (tarih, gorev, aciklama, sorumlu,",
+            "  durum, silindi, tamamlanma_tarihi). Bu sayfa düzenlenip 'Excel'den Toplu Yükle'",
+            "  sekmesinden geri yüklenebilir.",
+            "",
+            "Geçerli 'durum' değerleri: acik, devam, kapali, problem, aksiyon, hedef, yonetim.",
+        ]
+        for i, satir in enumerate(talimat_satirlari, start=1):
+            ws_t.cell(row=i, column=1, value=satir)
+        ws_t.column_dimensions["A"].width = 100
+
+        # --- Sayfa 3: Gorevler (şablonla aynı kolon yapısı) ---
+        ws_g = wb.create_sheet("Gorevler")
+        headers = ["tarih", "gorev", "aciklama", "sorumlu", "durum", "silindi", "tamamlanma_tarihi"]
+        for c, h in enumerate(headers, start=1):
+            cell = ws_g.cell(row=1, column=c, value=h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=NAVY)
+
+        for ridx, (_, row) in enumerate(rapor_df_export.iterrows(), start=2):
+            ws_g.cell(row=ridx, column=1, value=row.get("tarih", ""))
+            ws_g.cell(row=ridx, column=2, value=row.get("gorev", ""))
+            ws_g.cell(row=ridx, column=3, value=row.get("aciklama", ""))
+            ws_g.cell(row=ridx, column=4, value=row.get("sorumlu", ""))
+            ws_g.cell(row=ridx, column=5, value=row.get("durum", ""))
+            ws_g.cell(row=ridx, column=6, value="TRUE" if row.get("silindi") else "FALSE")
+            ws_g.cell(row=ridx, column=7, value=row.get("tamamlanma_tarihi", ""))
+
+        ws_g.column_dimensions["A"].width = 12
+        ws_g.column_dimensions["B"].width = 42
+        ws_g.column_dimensions["C"].width = 50
+        ws_g.column_dimensions["D"].width = 16
+        ws_g.column_dimensions["E"].width = 12
+        ws_g.column_dimensions["F"].width = 10
+        ws_g.column_dimensions["G"].width = 18
+        ws_g.freeze_panes = "A2"
+
+        satir_sinir = max(500, len(rapor_df_export) + 10)
+        dv_durum = DataValidation(type="list", formula1=f'"{",".join(["acik"] + GECERLI_DURUMLAR)}"', allow_blank=True)
+        ws_g.add_data_validation(dv_durum)
+        dv_durum.add(f"E2:E{satir_sinir}")
+
+        dv_silindi = DataValidation(type="list", formula1='"FALSE,TRUE"', allow_blank=True)
+        ws_g.add_data_validation(dv_silindi)
+        dv_silindi.add(f"F2:F{satir_sinir}")
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf.getvalue()
+
+    if st.button("📊 Excel Raporu Oluştur (3 Sekmeli)"):
+        if len(tarih_araligi) != 2:
+            st.error("Lütfen tarih aralığının başlangıç ve bitişini seçin.")
+        else:
+            rapor_baslangic, rapor_bitis = tarih_araligi
+            with st.spinner("Yapay zeka özeti hazırlanıyor..."):
+                ai_ozet_metni, ai_hata = generate_ai_summary_genel(rapor_baslangic, rapor_bitis, rapor_df)
+            if ai_hata:
+                st.warning(f"Yapay zeka özeti oluşturulamadı, rapor özetsiz devam ediyor: {ai_hata}")
+
+            st.session_state["gorev_raporu_xlsx"] = generate_report_workbook(
+                rapor_df, rapor_baslangic, rapor_bitis, ai_ozet_metni, selected_user
+            )
+            st.session_state["gorev_raporu_xlsx_adi"] = f"gorev_raporu_{rapor_baslangic}_{rapor_bitis}.xlsx"
+            st.success("Rapor oluşturuldu, aşağıdan indirebilirsiniz.")
+
+    if "gorev_raporu_xlsx" in st.session_state:
+        st.download_button(
+            "⬇️ Excel (.xlsx) olarak indir",
+            data=st.session_state["gorev_raporu_xlsx"],
+            file_name=st.session_state["gorev_raporu_xlsx_adi"],
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # TAB 5: HAFTALIK RAPOR (WORD)
 
