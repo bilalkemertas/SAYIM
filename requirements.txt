@@ -11,3 +11,4 @@ duckdb
 sql-metadata
 validators
 anthropic
+google-genai
