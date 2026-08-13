@@ -10,5 +10,4 @@ gspread-formatting
 duckdb
 sql-metadata
 validators
-anthropic
 google-genai
