@@ -8,7 +8,7 @@ from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from streamlit_gsheets import GSheetsConnection
 import streamlit.components.v1 as components
-from google import genai
+from groq import Groq
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -587,9 +587,9 @@ with tab4:
 def generate_ai_summary(donem_baslangic, donem_bitis, tamamlanan_donem, yeni_donem,
                          problem_donem, aksiyon_donem, hedef_donem, yonetim_donem,
                          acik_sayisi, devam_sayisi, kapali_sayisi):
-    api_key = st.secrets.get("gemini_api_key")
+    api_key = st.secrets.get("groq_api_key")
     if not api_key:
-        return None, "secrets.toml dosyasına 'gemini_api_key' eklenmemiş."
+        return None, "secrets.toml dosyasına 'groq_api_key' eklenmemiş."
 
     def liste_metni(dataframe):
         if dataframe.empty:
@@ -619,17 +619,20 @@ Yönetim desteği gereken konular:
 """
 
     try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
-            contents=(
-                "Aşağıdaki satın alma/depo görev verilerine dayanarak, üst yönetime sunulacak "
-                "3-5 cümlelik kısa ve profesyonel bir Türkçe yönetici özeti yaz. "
-                "Sadece özet metnini yaz; başlık, madde işareti veya ek açıklama ekleme.\n\n"
-                f"{veri_metni}"
-            )
+        client = Groq(api_key=api_key)
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Aşağıdaki satın alma/depo görev verilerine dayanarak, üst yönetime sunulacak "
+                    "3-5 cümlelik kısa ve profesyonel bir Türkçe yönetici özeti yaz. "
+                    "Sadece özet metnini yaz; başlık, madde işareti veya ek açıklama ekleme.\n\n"
+                    f"{veri_metni}"
+                )
+            }]
         )
-        return response.text.strip(), None
+        return completion.choices[0].message.content.strip(), None
     except Exception as e:
         return None, str(e)
 
